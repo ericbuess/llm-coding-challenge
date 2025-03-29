@@ -5,6 +5,7 @@ import pygame
 from constants import *
 import random # For frightened ghost movement
 import pygame.sprite # Import the sprite module
+import math
 
 class Entity(pygame.sprite.Sprite): # Inherit from Sprite
     def __init__(self, x, y, speed, color):
@@ -102,7 +103,11 @@ class Pacman(Entity):
         self.power_mode = False
         self.power_timer = 0
         self.score_multiplier = 0 # For sequential ghost eating
-        # TODO: Add animation frames
+        # Animation properties
+        self.animation_timer = 0
+        self.animation_frame = 0  # 0-2 for mouth animation (closed, half-open, fully open)
+        self.frames_per_second = 10  # Animation speed
+        self.mouth_angle = 0  # For the pacman's mouth angle based on direction
 
     def handle_input(self, event):
         if event.type == pygame.KEYDOWN:
@@ -116,6 +121,26 @@ class Pacman(Entity):
                 self.intended_direction = RIGHT
 
     def update(self, dt, maze, score_manager):
+        # Update animation
+        if self.direction != STOP:
+            self.animation_timer += dt
+            if self.animation_timer >= 1.0 / self.frames_per_second:
+                self.animation_frame = (self.animation_frame + 1) % 3  # Cycle through 0, 1, 2
+                self.animation_timer = 0
+        else:
+            # Reset animation when not moving
+            self.animation_frame = 0
+            
+        # Set mouth angle based on direction
+        if self.direction == RIGHT:
+            self.mouth_angle = 0
+        elif self.direction == DOWN:
+            self.mouth_angle = 90
+        elif self.direction == LEFT:
+            self.mouth_angle = 180
+        elif self.direction == UP:
+            self.mouth_angle = 270
+            
         super().update(dt, maze)
         self.check_pellet_collision(maze, score_manager)
 
@@ -162,10 +187,41 @@ class Pacman(Entity):
         self.direction = STOP
         self.intended_direction = STOP
 
-    # Override draw for animation later
-    # def draw(self, screen):
-    #     super().draw(screen)
-    #     # Add animation logic
+    def draw(self, screen):
+        # Draw Pac-Man with animation
+        center_x = int(self.x + TILE_SIZE // 2)
+        center_y = int(self.y + TILE_SIZE // 2)
+        
+        # Draw yellow circle
+        pygame.draw.circle(screen, YELLOW, (center_x, center_y), self.radius)
+        
+        # Draw mouth animation based on frame and direction
+        if self.animation_frame == 0:
+            # Closed mouth (just a full circle)
+            pass
+        else:
+            # Open mouth - angle depends on direction
+            # Animation frame determines how wide the mouth opens
+            mouth_size = 60 if self.animation_frame == 1 else 90  # Half or fully open
+            
+            # Draw a pie shape by removing a triangle from the circle
+            # The start_angle and stop_angle control the mouth direction and size
+            start_angle = (self.mouth_angle - mouth_size // 2) % 360
+            stop_angle = (self.mouth_angle + mouth_size // 2) % 360
+            
+            # Convert angles to radians for pygame
+            start_radians = math.radians(start_angle)
+            stop_radians = math.radians(stop_angle)
+            
+            # Draw a black triangle to create the mouth effect
+            points = [
+                (center_x, center_y),
+                (center_x + self.radius * math.cos(start_radians),
+                 center_y - self.radius * math.sin(start_radians)),
+                (center_x + self.radius * math.cos(stop_radians),
+                 center_y - self.radius * math.sin(stop_radians))
+            ]
+            pygame.draw.polygon(screen, BLACK, points)
 
 
 class Ghost(Entity):
@@ -180,12 +236,19 @@ class Ghost(Entity):
         super().__init__(x, y, speed, color) # This now correctly calls Entity.__init__, which calls Sprite.__init__
         self.ghost_type = ghost_type # e.g., 'blinky', 'pinky', etc.
         self.state = Ghost.SCATTER # Initial state
+        self.previous_state = Ghost.SCATTER  # For returning from frightened mode
         self.state_timer = 0
         self.frightened_timer = 0
+        self.mode_cycle = 0  # To track which scatter/chase cycle we're in
         self.target_tile = None
         self.scatter_target = self._get_scatter_target() # Corner tile
         self.home_tile = (13, 14) # Ghost house entrance/exit approx
         self.respawn_tile = (13, 11) # Inside the ghost house
+        
+        # Animation frames for different states
+        self.animation_timer = 0
+        self.animation_frame = 0
+        self.frames_per_second = 8  # Animation speed
 
     def _get_scatter_target(self):
         # Define scatter corners for each ghost
@@ -196,6 +259,12 @@ class Ghost(Entity):
         return (0, 0) # Default
 
     def update(self, dt, maze, pacman_pos, pacman_dir, blinky_pos=None):
+        # Update animation
+        self.animation_timer += dt
+        if self.animation_timer >= 1.0 / self.frames_per_second:
+            self.animation_frame = (self.animation_frame + 1) % 2  # Toggle between 0 and 1
+            self.animation_timer = 0
+            
         # State Timers
         if self.state == Ghost.FRIGHTENED:
             self.speed = GHOST_SPEED_FRIGHTENED
@@ -213,8 +282,7 @@ class Ghost(Entity):
         else: # Scatter or Chase
             self.speed = GHOST_SPEED
             self.state_timer += dt
-            # TODO: Implement scatter/chase mode switching based on timers
-            # self._update_mode_timer()
+            self._update_mode_timer()
 
         # Determine Target Tile based on State
         if self.state == Ghost.SCATTER:
@@ -319,6 +387,38 @@ class Ghost(Entity):
 
         return pacman_pos # Default fallback
 
+    def _update_mode_timer(self):
+        # Implement the scatter/chase cycle according to classic Pac-Man rules
+        if self.mode_cycle == 0:
+            if self.state == Ghost.SCATTER and self.state_timer >= SCATTER_TIME_1:
+                self.set_state(Ghost.CHASE)
+                self.state_timer = 0
+            elif self.state == Ghost.CHASE and self.state_timer >= CHASE_TIME_1:
+                self.set_state(Ghost.SCATTER)
+                self.state_timer = 0
+                self.mode_cycle = 1
+        elif self.mode_cycle == 1:
+            if self.state == Ghost.SCATTER and self.state_timer >= SCATTER_TIME_2:
+                self.set_state(Ghost.CHASE)
+                self.state_timer = 0
+            elif self.state == Ghost.CHASE and self.state_timer >= CHASE_TIME_2:
+                self.set_state(Ghost.SCATTER)
+                self.state_timer = 0
+                self.mode_cycle = 2
+        elif self.mode_cycle == 2:
+            if self.state == Ghost.SCATTER and self.state_timer >= SCATTER_TIME_3:
+                self.set_state(Ghost.CHASE)
+                self.state_timer = 0
+            elif self.state == Ghost.CHASE and self.state_timer >= CHASE_TIME_3:
+                self.set_state(Ghost.SCATTER)
+                self.state_timer = 0
+                self.mode_cycle = 3
+        elif self.mode_cycle == 3:
+            if self.state == Ghost.SCATTER and self.state_timer >= SCATTER_TIME_4:
+                self.set_state(Ghost.CHASE)
+                self.state_timer = 0
+                # From here on, ghosts remain in chase mode indefinitely
+
     def _pathfind_to_target(self, maze):
         # Simple pathfinding: at intersections, choose direction that minimizes
         # straight-line distance to target. Avoid reversing direction.
@@ -396,23 +496,76 @@ class Ghost(Entity):
          return WHITE # Default
 
     def draw(self, screen):
-        # Override draw for state-specific appearance
-        draw_color = self.color
-        if self.state == Ghost.FRIGHTENED:
-            # Blinking effect
-            if int(self.frightened_timer * 5) % 2 == 0: # Blink faster near end? Adjust multiplier
-                 draw_color = FRIGHTENED_BLUE
-            else:
-                 draw_color = FRIGHTENED_WHITE
-            # Make ghosts flash white just before timer runs out (e.g., last 2 seconds)
-            if self.frightened_timer < 2 and int(self.frightened_timer * 10) % 2 == 0:
-                 draw_color = FRIGHTENED_WHITE
-
-        elif self.state == Ghost.EATEN:
-             draw_color = BLUE # Represent eyes only (temporary)
-             # Ideally use an eye sprite later
-
-        # Draw simple circle
+        # Draw ghost with appropriate color based on state and a more classic ghost shape
         center_x = int(self.x + TILE_SIZE // 2)
         center_y = int(self.y + TILE_SIZE // 2)
-        pygame.draw.circle(screen, draw_color, (center_x, center_y), self.radius)
+        
+        # Determine ghost color based on state
+        if self.state == Ghost.FRIGHTENED:
+            # Flashing white and blue when frightened time is almost up
+            if self.frightened_timer < 2.0 and int(self.frightened_timer * 4) % 2 == 0:
+                color = FRIGHTENED_WHITE
+            else:
+                color = FRIGHTENED_BLUE
+        elif self.state == Ghost.EATEN:
+            # For eaten state, just draw the eyes
+            self._draw_eyes(screen, center_x, center_y)
+            return
+        else:
+            color = self.color
+        
+        # Draw ghost body with a more classic ghost shape
+        # Body - semi-circle with wavy bottom
+        rect = pygame.Rect(center_x - self.radius, center_y - self.radius, self.radius*2, self.radius*2)
+        pygame.draw.rect(screen, color, rect, border_radius=self.radius)  # Rounded top
+        
+        # Wavy bottom - zigzag pattern at the bottom of the ghost's body
+        wave_height = self.radius // 3
+        wave_width = self.radius // 2
+        wave_base_y = center_y + self.radius - wave_height
+        
+        wave_points = [
+            (center_x - self.radius, wave_base_y),
+            (center_x - self.radius + wave_width, wave_base_y + wave_height),
+            (center_x, wave_base_y),
+            (center_x + wave_width, wave_base_y + wave_height),
+            (center_x + self.radius, wave_base_y),
+            (center_x + self.radius, center_y - self.radius),  # Top right
+            (center_x - self.radius, center_y - self.radius)   # Top left
+        ]
+        
+        pygame.draw.polygon(screen, color, wave_points)
+        
+        # Draw eyes on top of body
+        self._draw_eyes(screen, center_x, center_y)
+    
+    def _draw_eyes(self, screen, center_x, center_y):
+        # Draw eyes
+        eye_radius = TILE_SIZE // 6
+        eye_offset = TILE_SIZE // 5
+        
+        # Draw white part of eyes
+        pygame.draw.circle(screen, WHITE, (center_x - eye_offset, center_y - eye_offset//2), eye_radius)
+        pygame.draw.circle(screen, WHITE, (center_x + eye_offset, center_y - eye_offset//2), eye_radius)
+        
+        # Draw pupils (look in direction of movement)
+        pupil_radius = eye_radius // 2
+        pupil_offset_x = 0
+        pupil_offset_y = 0
+        
+        # Adjust pupil position based on direction
+        if self.direction == LEFT:
+            pupil_offset_x = -pupil_radius
+        elif self.direction == RIGHT:
+            pupil_offset_x = pupil_radius
+        elif self.direction == UP:
+            pupil_offset_y = -pupil_radius
+        elif self.direction == DOWN:
+            pupil_offset_y = pupil_radius
+        
+        pygame.draw.circle(screen, BLACK, 
+                         (center_x - eye_offset + pupil_offset_x, center_y - eye_offset//2 + pupil_offset_y), 
+                         pupil_radius)
+        pygame.draw.circle(screen, BLACK, 
+                         (center_x + eye_offset + pupil_offset_x, center_y - eye_offset//2 + pupil_offset_y), 
+                         pupil_radius)

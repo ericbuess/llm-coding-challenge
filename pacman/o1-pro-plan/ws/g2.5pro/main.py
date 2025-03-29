@@ -6,6 +6,7 @@ from constants import *
 from maze import Maze
 from entities import Pacman, Ghost
 from score import ScoreManager
+from sound import SoundManager
 
 class Game:
     def __init__(self):
@@ -20,6 +21,7 @@ class Game:
         # Game Objects
         self.maze = Maze("layout.txt") # TODO: Ensure layout.txt exists or handle path
         self.score_manager = ScoreManager()
+        self.sound_manager = SoundManager()
 
         # Pacman Initialization
         # TODO: Get start position from maze data
@@ -62,7 +64,19 @@ class Game:
     def update(self, dt):
         if self.state == PLAYING:
             # Update Pac-Man
+            prev_pellets = len(self.maze.pellets) + len(self.maze.power_pellets)
             self.pacman.update(dt, self.maze, self.score_manager)
+            current_pellets = len(self.maze.pellets) + len(self.maze.power_pellets)
+            
+            # Check if a pellet was eaten and play sound
+            if current_pellets < prev_pellets:
+                # Check if it was a power pellet
+                if self.pacman.power_mode and self.pacman.power_timer >= FRIGHTENED_DURATION - 0.1:
+                    # Just started power mode, play power pellet sound
+                    self.sound_manager.play_power_pellet()
+                else:
+                    # Regular pellet eaten
+                    self.sound_manager.play_waka()
 
             # Update Ghosts
             pacman_tile = self.pacman.get_tile_pos()
@@ -77,6 +91,7 @@ class Game:
             # Check Win Condition
             if self.maze.all_pellets_eaten():
                 self.state = WIN
+                self.score_manager.save_if_needed()
                 print("You Win!") # Debug
 
             # Update Ghost power mode based on Pacman
@@ -92,7 +107,6 @@ class Game:
                                 # Revert to previous state (Scatter/Chase)
                                 ghost.set_state(ghost.previous_state)
 
-
     def check_collisions(self):
          pacman_tile = self.pacman.get_tile_pos()
          for ghost in self.ghosts:
@@ -105,10 +119,13 @@ class Game:
                         points = GHOST_POINTS[self.pacman.score_multiplier]
                         self.score_manager.add_score(points)
                         self.pacman.score_multiplier = min(self.pacman.score_multiplier + 1, 3) # Cap index at 3 (for 1600)
-                        # TODO: Play ghost eaten sound
+                        # Play ghost eaten sound
+                        self.sound_manager.play_eat_ghost()
                    elif ghost.state != Ghost.EATEN:
                         # Pac-Man caught
                         print("Caught by ghost!") # Debug
+                        # Play death sound
+                        self.sound_manager.play_death()
                         game_over = self.pacman.lose_life()
                         if game_over:
                             self.state = GAME_OVER
@@ -193,6 +210,8 @@ class Game:
          self.pacman.reset_position()
          self.reset_ghost_positions()
          self.score_manager.reset_score() # Reset score for new game
+         # Play start game sound
+         self.sound_manager.play_game_start()
 
     def quit_game(self):
         self.score_manager.save_if_needed()
