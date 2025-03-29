@@ -21,15 +21,18 @@ class PacmanGame:
         # Create game objects
         self.maze = Maze()
         self.score_manager = ScoreManager()
-        self.pacman = Pacman(self.maze)
         
-        # Create ghosts
+        # Create ghosts first (so pacman can reference them)
         self.ghosts = [
             Ghost("blinky", self.maze),
             Ghost("pinky", self.maze),
             Ghost("inky", self.maze),
             Ghost("clyde", self.maze)
         ]
+        
+        # Create pacman with reference to ghosts (for inky targeting)
+        self.pacman = Pacman(self.maze)
+        self.pacman.ghosts = self.ghosts  # Add reference to ghosts
         
         # Create game states
         self.states = {
@@ -79,16 +82,17 @@ class PacmanGame:
         # Reset maze (recreate to restore pellets)
         self.maze = Maze()
         
-        # Reset Pac-Man
-        self.pacman = Pacman(self.maze)
-        
-        # Reset ghosts
+        # Reset ghosts first
         self.ghosts = [
             Ghost("blinky", self.maze),
             Ghost("pinky", self.maze),
             Ghost("inky", self.maze),
             Ghost("clyde", self.maze)
         ]
+        
+        # Reset Pac-Man with reference to ghosts
+        self.pacman = Pacman(self.maze)
+        self.pacman.ghosts = self.ghosts
         
         # Reset score but keep high score
         self.score_manager.reset_score()

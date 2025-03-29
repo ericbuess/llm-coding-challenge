@@ -38,12 +38,8 @@ class Entity:
         # Calculate distance to move
         dist = self.speed * dt / 1000  # Convert milliseconds to seconds
         
-        # Move according to current direction
-        new_x = self.x + self.direction[0] * dist
-        new_y = self.y + self.direction[1] * dist
-        
-        # Check if we need to turn
-        if self.is_at_intersection() and self.next_direction != STOP:
+        # Try to change direction, even if not exactly at an intersection
+        if self.next_direction != STOP and self.next_direction != self.direction:
             # Get current and next tile positions
             current_tile = self.get_tile_pos()
             next_tile = (current_tile[0] + self.next_direction[0], 
@@ -51,10 +47,32 @@ class Entity:
             
             # Try to change direction if possible
             if maze.can_move_to(*next_tile):
-                self.direction = self.next_direction
-                # Recalculate movement based on new direction
-                new_x = self.x + self.direction[0] * dist
-                new_y = self.y + self.direction[1] * dist
+                # For Pacman's smoother turning, we should be at/near an intersection
+                # or along the same axis as the turn
+                can_turn = self.is_at_intersection()
+                
+                # Allow turning at any point along the same axis
+                # (e.g., going left/right and want to go up/down at a column)
+                if (self.direction[0] != 0 and self.next_direction[0] == 0 and 
+                    abs(self.x % TILE_SIZE - TILE_SIZE//2) < 5):
+                    can_turn = True
+                # Going up/down and want to go left/right at a row
+                elif (self.direction[1] != 0 and self.next_direction[1] == 0 and 
+                      abs(self.y % TILE_SIZE - TILE_SIZE//2) < 5):
+                    can_turn = True
+                
+                if can_turn:
+                    # Correct position to align with the grid when turning
+                    if self.next_direction[0] == 0:  # turning to go up/down
+                        self.x = current_tile[0] * TILE_SIZE + TILE_SIZE//2
+                    if self.next_direction[1] == 0:  # turning to go left/right
+                        self.y = current_tile[1] * TILE_SIZE + TILE_SIZE//2
+                        
+                    self.direction = self.next_direction
+        
+        # Move according to current direction
+        new_x = self.x + self.direction[0] * dist
+        new_y = self.y + self.direction[1] * dist
         
         # Check if movement in current direction is valid
         next_tile = (int(new_x // TILE_SIZE), int(new_y // TILE_SIZE))
@@ -62,8 +80,21 @@ class Entity:
             self.x = new_x
             self.y = new_y
         else:
-            # Stop at wall
-            self.direction = STOP
+            # Allow trying the queued direction instead of stopping
+            if self.next_direction != STOP and self.next_direction != self.direction:
+                # Try the next direction
+                alt_x = self.x + self.next_direction[0] * dist
+                alt_y = self.y + self.next_direction[1] * dist
+                alt_tile = (int(alt_x // TILE_SIZE), int(alt_y // TILE_SIZE))
+                
+                if maze.can_move_to(*alt_tile):
+                    self.direction = self.next_direction
+                    self.x = alt_x
+                    self.y = alt_y
+            # Only stop if we can't move in either direction
+            else:
+                # Don't completely stop at walls, just prevent movement
+                pass
         
         # Handle tunnels
         self.handle_wrap_around()
@@ -76,11 +107,35 @@ class Pacman(Entity):
         self.power_timer = 0
         self.mouth_open = True
         self.animation_timer = 0
+        self.stuck_timer = 0  # Track how long Pacman has been stuck
     
     def update(self, dt, maze, score_manager):
         """Update Pac-Man's position and state."""
+        # Save current position to check if we actually moved
+        prev_x, prev_y = self.x, self.y
+        
         # Update movement
         self.move(dt, maze)
+        
+        # Check if Pacman is stuck (hasn't moved and tried to move)
+        if self.direction != STOP and abs(self.x - prev_x) < 0.1 and abs(self.y - prev_y) < 0.1:
+            self.stuck_timer += dt
+            # If stuck for more than 200ms, try to align to grid
+            if self.stuck_timer > 200:
+                # Align to grid to help unstick
+                tile_x, tile_y = self.get_tile_pos()
+                self.x = tile_x * TILE_SIZE + TILE_SIZE // 2
+                self.y = tile_y * TILE_SIZE + TILE_SIZE // 2
+                # Try alternate direction if available
+                if self.next_direction != STOP and self.next_direction != self.direction:
+                    # Check if next direction is valid
+                    next_tile = (tile_x + self.next_direction[0], tile_y + self.next_direction[1])
+                    if maze.can_move_to(*next_tile):
+                        self.direction = self.next_direction
+                self.stuck_timer = 0
+        else:
+            # Reset stuck timer if moving
+            self.stuck_timer = 0
         
         # Handle pellet collisions
         self.check_pellet_collision(maze, score_manager)
@@ -196,6 +251,21 @@ class Ghost(Entity):
     
     def update(self, dt, maze, pacman):
         """Update ghost state and movement."""
+        # Save current position to check if we actually moved
+        prev_x, prev_y = self.x, self.y
+        prev_tile = self.get_tile_pos()
+        
+        # If ghost is stuck with STOP direction in ghost house, initialize movement
+        if self.direction == STOP and maze.is_ghost_house(*prev_tile):
+            # Choose a valid initial direction to exit the ghost house
+            exit_directions = [UP, LEFT, RIGHT]  # Prefer UP to exit
+            for d in exit_directions:
+                next_tile = (prev_tile[0] + d[0], prev_tile[1] + d[1])
+                if maze.can_move_to(*next_tile):
+                    self.direction = d
+                    self.next_direction = d
+                    break
+        
         # Update state timers
         if self.current_state == self.FRIGHTENED:
             self.frightened_timer -= dt
@@ -217,9 +287,17 @@ class Ghost(Entity):
         # Determine target based on current state
         target = self.get_target_tile(maze, pacman)
         
-        # If at an intersection, choose direction toward target
-        if self.is_at_intersection():
+        # Choose direction either at intersections or if currently stopped
+        if self.is_at_intersection() or self.direction == STOP:
             self.choose_direction(maze, target)
+        # Also choose new direction if we're about to hit a wall
+        else:
+            next_tile = (
+                int((self.x + self.direction[0] * 5) // TILE_SIZE),
+                int((self.y + self.direction[1] * 5) // TILE_SIZE)
+            )
+            if not maze.can_move_to(*next_tile):
+                self.choose_direction(maze, target)
         
         # Move the ghost
         # Override the speed based on state
@@ -230,6 +308,25 @@ class Ghost(Entity):
             self.speed = EATEN_SPEED
         
         self.move(dt, maze)
+        
+        # Check if ghost is stuck (hasn't moved)
+        current_tile = self.get_tile_pos()
+        if (abs(self.x - prev_x) < 0.1 and abs(self.y - prev_y) < 0.1 and
+            self.direction != STOP):
+            # Align to grid to help unstick
+            self.x = current_tile[0] * TILE_SIZE + TILE_SIZE // 2
+            self.y = current_tile[1] * TILE_SIZE + TILE_SIZE // 2
+            
+            # Try a different direction
+            possible_dirs = [UP, DOWN, LEFT, RIGHT]
+            random.shuffle(possible_dirs)  # Randomize to break patterns
+            
+            for d in possible_dirs:
+                next_tile = (current_tile[0] + d[0], current_tile[1] + d[1])
+                if maze.can_move_to(*next_tile) and d != self.direction:
+                    self.direction = d
+                    self.next_direction = d
+                    break
         
         # Restore original speed
         self.speed = original_speed
@@ -266,9 +363,17 @@ class Ghost(Entity):
     
     def get_target_tile(self, maze, pacman):
         """Determine the target tile based on ghost type and state."""
+        # If in ghost house and not eaten, target exit point above ghost house
+        if maze.is_ghost_house(*self.get_tile_pos()) and self.current_state != self.EATEN:
+            # A point above the ghost house to encourage ghosts to leave
+            return (14, 11)  # Exit point above ghost house
+        
         if self.current_state == self.FRIGHTENED:
-            # Random target when frightened
-            return (random.randint(0, GRID_WIDTH-1), random.randint(0, GRID_HEIGHT-1))
+            # Random target when frightened but don't target walls
+            while True:
+                target = (random.randint(1, GRID_WIDTH-2), random.randint(1, GRID_HEIGHT-2))
+                if not maze.is_wall(*target):
+                    return target
         
         elif self.current_state == self.EATEN:
             # Target is the ghost house when eaten
@@ -293,11 +398,28 @@ class Ghost(Entity):
                 if pacman.direction == UP:
                     target_x -= 4  # Shift left by 4 tiles
                 
+                # Make sure target is within bounds
+                target_x = max(0, min(GRID_WIDTH-1, target_x))
+                target_y = max(0, min(GRID_HEIGHT-1, target_y))
+                
                 return (target_x, target_y)
             
             elif self.ghost_type == "inky":  # Cyan - uses Blinky's position
+                # Find Blinky's position (if we can)
+                blinky_pos = None
+                from main import PacmanGame
+                for ghost in pacman.ghosts if hasattr(pacman, 'ghosts') else []:
+                    if ghost.ghost_type == "blinky":
+                        blinky_pos = ghost.get_tile_pos()
+                        break
+                
+                # If we can't find Blinky, use fixed position
+                if not blinky_pos:
+                    blinky_x, blinky_y = (14, 11)  # Center of maze
+                else:
+                    blinky_x, blinky_y = blinky_pos
+                
                 # Target is based on a vector from Blinky to a point ahead of Pacman
-                # Simplified implementation: 2 tiles ahead of Pacman
                 ahead_x = pacman_tile[0] + 2 * pacman.direction[0]
                 ahead_y = pacman_tile[1] + 2 * pacman.direction[1]
                 
@@ -305,12 +427,13 @@ class Ghost(Entity):
                 if pacman.direction == UP:
                     ahead_x -= 2
                 
-                # Since we don't track Blinky separately in this function,
-                # let's use a fixed position for demonstration
-                blinky_x, blinky_y = (0, 0)  # This should be Blinky's actual position
                 # The target is the reflection of the ahead point about Blinky
                 target_x = 2 * ahead_x - blinky_x
                 target_y = 2 * ahead_y - blinky_y
+                
+                # Make sure target is within bounds
+                target_x = max(0, min(GRID_WIDTH-1, target_x))
+                target_y = max(0, min(GRID_HEIGHT-1, target_y))
                 
                 return (target_x, target_y)
             
@@ -329,12 +452,21 @@ class Ghost(Entity):
         """Choose the best direction to reach the target."""
         current_tile = self.get_tile_pos()
         
+        # Special case for ghost house - prioritize moving upward to exit
+        if maze.is_ghost_house(*current_tile) and self.current_state != self.EATEN:
+            # First try UP to exit
+            next_tile = (current_tile[0], current_tile[1] - 1)
+            if maze.can_move_to(*next_tile):
+                self.next_direction = UP
+                return
+        
         # Possible directions (excluding the opposite of current direction)
         possible_dirs = [UP, DOWN, LEFT, RIGHT]
         
         # Remove the opposite direction to prevent backtracking
-        # (unless in frightened mode where random movement is desired)
-        if self.direction != STOP and self.current_state != self.FRIGHTENED:
+        # (unless stopped, in frightened mode, or stuck)
+        if (self.direction != STOP and 
+            self.current_state != self.FRIGHTENED):
             opposite = (-self.direction[0], -self.direction[1])
             if opposite in possible_dirs:
                 possible_dirs.remove(opposite)
@@ -346,13 +478,45 @@ class Ghost(Entity):
             if maze.can_move_to(*next_tile):
                 valid_dirs.append(d)
         
-        if not valid_dirs:  # No valid directions (should not happen)
-            self.next_direction = STOP
+        # If no valid directions (should rarely happen), allow backing up
+        if not valid_dirs:
+            # Try again with all directions
+            for d in [UP, DOWN, LEFT, RIGHT]:
+                next_tile = (current_tile[0] + d[0], current_tile[1] + d[1])
+                if maze.can_move_to(*next_tile):
+                    valid_dirs.append(d)
+        
+        # Still no valid directions (should never happen)
+        if not valid_dirs:
+            # Just maintain current direction or stop if that's not possible
+            next_tile = (current_tile[0] + self.direction[0], current_tile[1] + self.direction[1])
+            if maze.can_move_to(*next_tile):
+                self.next_direction = self.direction
+            else:
+                self.next_direction = STOP
             return
         
         if self.current_state == self.FRIGHTENED:
             # Choose a random valid direction when frightened
-            self.next_direction = random.choice(valid_dirs)
+            # But with small chance to make better choice to avoid getting stuck
+            if random.random() < 0.8:  # 80% chance for random move
+                self.next_direction = random.choice(valid_dirs)
+            else:
+                # 20% chance to move toward a valid target
+                # Choose the direction that gets closest to pacman's opposite side
+                best_dir = None
+                best_dist = -float('inf')  # Note: maximizing distance in frightened mode
+                
+                for d in valid_dirs:
+                    next_tile = (current_tile[0] + d[0], current_tile[1] + d[1])
+                    dist = math.sqrt((next_tile[0] - target[0])**2 + 
+                                    (next_tile[1] - target[1])**2)
+                    
+                    if dist > best_dist:
+                        best_dist = dist
+                        best_dir = d
+                
+                self.next_direction = best_dir
         else:
             # Choose the direction that gets closest to the target
             best_dir = None

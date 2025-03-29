@@ -100,11 +100,14 @@ class PlayState(GameState):
                                                  self.game.score_manager)
         
         # If power pellet eaten, update ghost states
-        if power_pellet_eaten:
+        if power_pellet_eaten or (self.game.pacman.power_mode and self.game.pacman.power_timer > 0):
             for ghost in self.game.ghosts:
-                if ghost.current_state != ghost.EATEN:
-                    ghost.set_state(ghost.FRIGHTENED)
-            self.game.score_manager.reset_ghost_combo()
+                if ghost.current_state != ghost.EATEN and ghost.current_state != ghost.FRIGHTENED:
+                    ghost.set_state(ghost.FRIGHTENED, self.game.pacman.power_timer)
+            
+            # Only reset ghost combo when a new power pellet is eaten
+            if power_pellet_eaten:
+                self.game.score_manager.reset_ghost_combo()
         
         # Update ghosts
         for ghost in self.game.ghosts:
