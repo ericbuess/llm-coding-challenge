@@ -31,10 +31,17 @@ class PacmanGame:
         self.score_manager = ScoreManager()
         self.game_state = GameStateManager()
         
-        # Create initial positions from the maze
+        # Ensure maze has a valid Pacman spawn point
+        if not self.maze.pacman_spawn:
+            print("ERROR: No Pacman spawn point found")
+            self.maze.pacman_spawn = (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 3 * TILE_SIZE)
+        else:
+            print(f"Initial Pacman spawn: {self.maze.pacman_spawn}")
+        
+        # Create Pacman at its dedicated spawn point
         self.pacman = Pacman(*self.maze.pacman_spawn)
         
-        # Create ghosts
+        # Create ghosts, ensuring they start in ghost area
         self.ghosts = [
             Ghost(*self.maze.ghost_spawns[BLINKY], BLINKY),
             Ghost(*self.maze.ghost_spawns[PINKY], PINKY),
@@ -78,8 +85,17 @@ class PacmanGame:
         # Reset maze (regenerate pellets)
         self.maze = Maze()
         
-        # Reset Pac-Man position
+        # Ensure maze has a valid Pacman spawn point
+        if not self.maze.pacman_spawn:
+            print("ERROR: No Pacman spawn point found during reset")
+            self.maze.pacman_spawn = (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 3 * TILE_SIZE)
+        else:
+            print(f"Reset Pacman spawn: {self.maze.pacman_spawn}")
+            
+        # Reset Pac-Man position and initialize movement
         self.pacman.reset_position(*self.maze.pacman_spawn)
+        self.pacman.direction = STOP
+        self.pacman.next_direction = None
         
         # Reset ghost positions and states
         for ghost in self.ghosts:

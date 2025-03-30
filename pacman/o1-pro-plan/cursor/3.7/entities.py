@@ -46,33 +46,56 @@ class Entity:
                     self.y = tile_center_y
                     self.direction = self.next_direction
                     self.next_direction = None
+                    print(f"Direction changed to {self.direction} at position {self.x}, {self.y}")
+        
+        # If we're not moving, try to start moving in queued direction
+        if self.direction == STOP and self.next_direction:
+            # Calculate next tile position based on next_direction
+            next_tile_x = (self.x // TILE_SIZE) + self.next_direction[0]
+            next_tile_y = (self.y // TILE_SIZE) + self.next_direction[1]
+            
+            # Check if the next tile in the desired direction is valid
+            if not maze.is_wall(next_tile_x, next_tile_y):
+                # Snap to tile center when starting to move
+                tile_center_x = (self.x // TILE_SIZE) * TILE_SIZE + TILE_SIZE // 2
+                tile_center_y = (self.y // TILE_SIZE) * TILE_SIZE + TILE_SIZE // 2
+                self.x = tile_center_x
+                self.y = tile_center_y
+                self.direction = self.next_direction
+                self.next_direction = None
+                print(f"Started moving in direction {self.direction} from position {self.x}, {self.y}")
         
         # Calculate new position based on current direction
         new_x = self.x + self.direction[0] * self.speed
         new_y = self.y + self.direction[1] * self.speed
         
-        # Check for wall collision
+        # Handle wrap-around tunnels before collision check
+        new_x, new_y = maze.check_wrap_around(new_x, new_y)
+        
+        # Check for wall collision using the new wrapped coordinates
         next_tile_x = new_x // TILE_SIZE
         next_tile_y = new_y // TILE_SIZE
+        
+        # Get current tile position for improved collision detection
+        current_tile_x = self.x // TILE_SIZE
+        current_tile_y = self.y // TILE_SIZE
         
         # If not hitting a wall, update position
         if not maze.is_wall(next_tile_x, next_tile_y):
             self.x = new_x
             self.y = new_y
         else:
-            # If we hit a wall, stop in that direction
+            # If we hit a wall, adjust position to prevent sticking
             if self.direction[0] != 0:  # Moving horizontally
                 # Align with tile center horizontally
-                self.x = next_tile_x * TILE_SIZE - self.direction[0] * (TILE_SIZE // 2)
+                self.x = current_tile_x * TILE_SIZE + TILE_SIZE // 2
             if self.direction[1] != 0:  # Moving vertically
                 # Align with tile center vertically
-                self.y = next_tile_y * TILE_SIZE - self.direction[1] * (TILE_SIZE // 2)
+                self.y = current_tile_y * TILE_SIZE + TILE_SIZE // 2
             
             # Stop movement if we hit a wall
             self.direction = STOP
-        
-        # Handle wrap-around tunnels
-        self.x, self.y = maze.check_wrap_around(self.x, self.y)
+            print(f"Hit wall at {next_tile_x}, {next_tile_y}, stopped at {self.x}, {self.y}")
         
         # Update animation frame
         if self.direction != STOP:
@@ -121,6 +144,19 @@ class Pacman(Entity):
     
     def update(self, dt, maze, score_manager=None):
         """Update Pac-Man position, handle pellet consumption"""
+        # Check for pellet consumption first, before movement
+        if score_manager:
+            tile_x, tile_y = self.get_tile_position()
+            score = maze.consume_pellet(tile_x, tile_y)
+            if score > 0:
+                score_manager.add_score(score)
+                
+                # Check for power pellet
+                if score == POWER_PELLET_SCORE:
+                    self.activate_power_mode()
+                    score_manager.reset_ghost_multiplier()
+        
+        # Now handle movement
         super().update(dt, maze)
         
         # Update power pellet timer
@@ -137,18 +173,6 @@ class Pacman(Entity):
             if self.invincible_timer <= 0:
                 self.invincible = False
         
-        # Check for pellet consumption
-        if score_manager:
-            tile_x, tile_y = self.get_tile_position()
-            score = maze.consume_pellet(tile_x, tile_y)
-            if score > 0:
-                score_manager.add_score(score)
-                
-                # Check for power pellet
-                if score == POWER_PELLET_SCORE:
-                    self.activate_power_mode()
-                    score_manager.reset_ghost_multiplier()
-                    
         # Update mouth animation
         if self.direction != STOP:
             self.mouth_open += 0.1 * self.mouth_direction
@@ -159,6 +183,9 @@ class Pacman(Entity):
     
     def handle_input(self, keys):
         """Handle keyboard input for movement"""
+        # Save the direction for debugging
+        prev_direction = self.next_direction
+        
         if keys[pygame.K_UP] or keys[pygame.K_w]:
             self.set_direction(UP)
         elif keys[pygame.K_DOWN] or keys[pygame.K_s]:
@@ -167,6 +194,10 @@ class Pacman(Entity):
             self.set_direction(LEFT)
         elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
             self.set_direction(RIGHT)
+            
+        # If direction changed, print it for debugging
+        if prev_direction != self.next_direction:
+            print(f"Pacman direction changed to: {self.next_direction}")
     
     def reset_position(self, x, y):
         """Reset Pac-Man to the start position after dying or starting a new level"""
@@ -311,6 +342,14 @@ class Ghost(Entity):
         else:
             self.speed = GHOST_SPEED
         
+        # Center ghost to tile grid when at an intersection to prevent edge riding
+        if maze.is_intersection(self.x, self.y):
+            # Snap to tile center
+            tile_x = self.x // TILE_SIZE
+            tile_y = self.y // TILE_SIZE
+            self.x = tile_x * TILE_SIZE + TILE_SIZE // 2
+            self.y = tile_y * TILE_SIZE + TILE_SIZE // 2
+            
         # Choose direction based on current state and position
         if maze.is_intersection(self.x, self.y) or self.direction == STOP:
             target_tile = self.get_target_tile(pacman)

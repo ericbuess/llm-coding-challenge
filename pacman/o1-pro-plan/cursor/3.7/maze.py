@@ -44,7 +44,7 @@ class Maze:
             "#......##....##....##......#",
             "#.##########.##.##########.#",
             "#.##########.##.##########.#",
-            "#..........................#",
+            "#..........P...............#",
             "############################"
         ]
         
@@ -83,8 +83,11 @@ class Maze:
                     self.total_pellets += 1
                     self.remaining_pellets += 1
                 elif cell == PACMAN_START:
+                    # Store Pacman's spawn position in tile coordinates
                     self.pacman_spawn = (x * TILE_SIZE + TILE_SIZE // 2, 
                                          y * TILE_SIZE + TILE_SIZE // 2)
+                    # This position should also be an empty path (not a wall)
+                    # Don't place a pellet here
                 elif cell == 'B':
                     self.ghost_spawns[BLINKY] = (x * TILE_SIZE + TILE_SIZE // 2, 
                                                 y * TILE_SIZE + TILE_SIZE // 2)
@@ -100,10 +103,14 @@ class Maze:
                 elif cell == GHOST_HOUSE:
                     self.ghost_house_positions.append((x, y))
 
+        # Print debug info about Pacman spawn
+        print(f"Pacman spawn position: {self.pacman_spawn}")
+                    
         # If specific spawn points weren't defined, use default positions
         if not self.pacman_spawn:
             self.pacman_spawn = (GRID_WIDTH // 2 * TILE_SIZE + TILE_SIZE // 2, 
-                                 (GRID_HEIGHT - 8) * TILE_SIZE + TILE_SIZE // 2)
+                                 (GRID_HEIGHT - 3) * TILE_SIZE + TILE_SIZE // 2)
+            print(f"Using default Pacman spawn: {self.pacman_spawn}")
         
         # Default ghost spawn points if not specified
         for ghost in [BLINKY, PINKY, INKY, CLYDE]:
@@ -132,8 +139,14 @@ class Maze:
         if (tile_x < 0 or tile_x >= GRID_WIDTH or 
             tile_y < 0 or tile_y >= GRID_HEIGHT):
             return True  # Out of bounds is considered a wall
+        
+        # Log wall checks for debugging
+        cell = self.layout[tile_y][tile_x]
+        is_wall_result = cell == WALL
+        if is_wall_result:
+            print(f"Wall detected at ({tile_x}, {tile_y})")
             
-        return self.layout[tile_y][tile_x] == WALL
+        return is_wall_result
 
     def is_intersection(self, x, y):
         """

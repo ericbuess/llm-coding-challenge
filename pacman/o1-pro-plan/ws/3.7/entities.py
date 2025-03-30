@@ -26,7 +26,8 @@ class Entity:
             pixel_y = tile_y * TILE_SIZE + TILE_SIZE // 2
             
             # If we're close to the center of the tile, we can try to change direction
-            if abs(self.x - pixel_x) < self.speed and abs(self.y - pixel_y) < self.speed:
+            # Increasing tolerance from self.speed to self.speed * 1.5 to fix getting stuck
+            if abs(self.x - pixel_x) < self.speed * 1.5 and abs(self.y - pixel_y) < self.speed * 1.5:
                 # Snap to tile center for precise turning
                 self.x = pixel_x
                 self.y = pixel_y
@@ -197,6 +198,11 @@ class Ghost(Entity):
         self.animation_frame = 0
         self.respawn_timer = 0
         
+        # Staggered exit times for different ghosts
+        # Use index instead of adding directly since ghost_type is a string
+        exit_delays = {BLINKY: 1, PINKY: 2, INKY: 3, CLYDE: 4}
+        self.exit_timer = FPS * exit_delays.get(ghost_type, 2)  # Default to 2 if ghost type not found
+        
         # Set color based on ghost type
         if ghost_type == BLINKY:
             self.color = RED
@@ -244,6 +250,29 @@ class Ghost(Entity):
         
         # Get current tile position
         tile_x, tile_y = self.get_tile_pos()
+        
+        # Check if ghost is in the ghost house
+        in_ghost_house = (tile_x, tile_y) in maze.ghost_house_positions
+        
+        # Handle ghost house exit logic
+        if in_ghost_house and self.exit_timer > 0:
+            self.exit_timer -= 1
+            if self.exit_timer <= 0 or pacman.power_mode:
+                # Time to exit the ghost house
+                # Target the exit point (usually directly above the ghost house)
+                exit_x, exit_y = min(maze.ghost_house_positions, key=lambda pos: pos[1])
+                exit_y -= 2  # Position just above the ghost house
+                
+                # Set direction toward exit
+                dx = 0
+                dy = -1  # Move up to exit
+                self.direction = (dx, dy)
+                return  # Skip normal movement logic
+            else:
+                # Move randomly inside the ghost house until exit time
+                if random.random() < 0.05:  # Occasionally change direction
+                    self.direction = random.choice([LEFT, RIGHT, UP, DOWN])
+                return  # Skip normal movement logic
         
         # Get target tile based on state
         if self.current_state == FRIGHTENED:
