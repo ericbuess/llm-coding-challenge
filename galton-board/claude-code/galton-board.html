@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galton Board Simulation</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 1px solid #333;
+            background-color: white;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.8);
+            border-radius: 5px;
+        }
+        button {
+            margin: 0 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <button id="start">Start Dropping Balls</button>
+        <button id="stop">Stop</button>
+        <button id="reset">Reset</button>
+    </div>
+    <canvas id="canvas" width="500" height="700"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
+    <script>
+        // Matter.js module aliases
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              Runner = Matter.Runner,
+              Bodies = Matter.Bodies,
+              Composite = Matter.Composite,
+              Body = Matter.Body,
+              Events = Matter.Events;
+
+        // Create engine and renderer
+        const engine = Engine.create({
+            gravity: { x: 0, y: 1 }
+        });
+        const world = engine.world;
+
+        const canvas = document.getElementById('canvas');
+        const render = Render.create({
+            canvas: canvas,
+            engine: engine,
+            options: {
+                width: 500,
+                height: 700,
+                wireframes: false,
+                background: 'white'
+            }
+        });
+
+        // Configure physics parameters for more realistic interactions
+        engine.gravity.y = 0.5; // Adjusted gravity for better visualization
+        
+        // Board dimensions
+        const width = 500;
+        const height = 700;
+        const wallThickness = 10;
+        const pegRadius = 5;
+        const ballRadius = 6;
+        const binCount = 11; // Number of collection bins
+        const binDividerThickness = 4;
+        const pegSpacing = 30; // Horizontal spacing between pegs
+        const rowSpacing = 30; // Vertical spacing between rows of pegs
+        const boardTopMargin = 100; // Space at the top before pegs start
+        const binHeight = 150; // Height of the collection bins
+        
+        // Colors
+        const wallColor = '#FFCC00'; // Yellow for structural elements
+        const pegColor = '#FF3333';  // Red for pegs
+        const ballColor = '#333333'; // Dark gray for balls
+        
+        // Create walls and ground (yellow)
+        const leftWall = Bodies.rectangle(
+            wallThickness/2, height/2, wallThickness, height, 
+            { isStatic: true, render: { fillStyle: wallColor } }
+        );
+        
+        const rightWall = Bodies.rectangle(
+            width - wallThickness/2, height/2, wallThickness, height, 
+            { isStatic: true, render: { fillStyle: wallColor } }
+        );
+        
+        const ground = Bodies.rectangle(
+            width/2, height - wallThickness/2, width, wallThickness, 
+            { isStatic: true, render: { fillStyle: wallColor } }
+        );
+
+        // Create top guide/funnel (yellow) - vertical guides, much further apart
+        const topLeft = Bodies.rectangle(
+            width/2 - 40, boardTopMargin - 50, 90, 8, 
+            { isStatic: true, angle: Math.PI / 2, render: { fillStyle: wallColor } }
+        );
+        
+        const topRight = Bodies.rectangle(
+            width/2 + 40, boardTopMargin - 50, 90, 8, 
+            { isStatic: true, angle: Math.PI / 2, render: { fillStyle: wallColor } }
+        );
+
+        // Add all static elements to the world
+        Composite.add(world, [leftWall, rightWall, ground, topLeft, topRight]);
+
+        // Create pegs in horizontal rows (red)
+        const pegRows = Math.floor((height - boardTopMargin - binHeight - 2 * wallThickness) / rowSpacing);
+        const pegs = [];
+
+        for (let row = 0; row < pegRows; row++) {
+            const isOffsetRow = row % 2 === 1;
+            const pegsInRow = Math.floor((width - 2 * wallThickness) / pegSpacing);
+            const startX = isOffsetRow ? 
+                wallThickness + pegSpacing / 2 : 
+                wallThickness;
+            
+            for (let col = 0; col < pegsInRow; col++) {
+                const pegX = startX + col * pegSpacing;
+                const pegY = boardTopMargin + row * rowSpacing;
+                
+                const peg = Bodies.circle(
+                    pegX, pegY, pegRadius, 
+                    { 
+                        isStatic: true, 
+                        render: { fillStyle: pegColor },
+                        restitution: 0.5, // Bounciness of pegs
+                        friction: 0.02    // Low friction to allow proper bouncing
+                    }
+                );
+                pegs.push(peg);
+            }
+        }
+        Composite.add(world, pegs);
+
+        // Create bin dividers (yellow)
+        const bins = [];
+        const binWidth = (width - 2 * wallThickness) / binCount;
+        const binDividerHeight = binHeight;
+        const binBottom = height - wallThickness;
+
+        // Create physical bin dividers
+        for (let i = 0; i <= binCount; i++) {
+            const dividerX = wallThickness + i * binWidth;
+            const dividerY = binBottom - binDividerHeight / 2;
+            
+            const divider = Bodies.rectangle(
+                dividerX, dividerY, binDividerThickness, binDividerHeight, 
+                { isStatic: true, render: { fillStyle: wallColor } }
+            );
+            bins.push(divider);
+        }
+        Composite.add(world, bins);
+
+        // Bin counters
+        const binCounts = new Array(binCount).fill(0);
+
+        // Ball dropping function
+        let dropInterval = null;
+        let totalBalls = 0;
+        const maxBalls = 300; // Maximum number of balls to drop
+
+        function dropBall() {
+            if (totalBalls >= maxBalls) {
+                clearInterval(dropInterval);
+                return;
+            }
+
+            // No random variation - drop balls straight down the middle from higher up
+            const ball = Bodies.circle(
+                width / 2, 20, 
+                ballRadius, 
+                { 
+                    restitution: 0.5,     // Bounciness of balls
+                    friction: 0.03,       // Low friction for smoother movement
+                    frictionAir: 0.001,   // Low air resistance
+                    density: 0.1,         // Lighter balls for better bouncing
+                    render: { fillStyle: ballColor }
+                }
+            );
+            
+            Composite.add(world, ball);
+            totalBalls++;
+
+            // Track which bin the ball ends up in
+            Events.on(engine, 'afterUpdate', function() {
+                if (ball.position.y > binBottom - binHeight && ball.position.y < binBottom) {
+                    const binIndex = Math.floor((ball.position.x - wallThickness) / binWidth);
+                    if (binIndex >= 0 && binIndex < binCount && !ball.counted) {
+                        binCounts[binIndex]++;
+                        ball.counted = true;
+                        updateBinDisplay();
+                    }
+                }
+            });
+        }
+
+        // Function to update bin counts visually
+        function updateBinDisplay() {
+            // Clear the bin display area
+            const ctx = render.context;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.fillRect(0, height - binHeight, width, 20);
+            
+            // Draw bin counts
+            ctx.font = "12px Arial";
+            ctx.fillStyle = '#000';
+            ctx.textAlign = 'center';
+            
+            for (let i = 0; i < binCount; i++) {
+                const binCenter = wallThickness + (i + 0.5) * binWidth;
+                ctx.fillText(binCounts[i], binCenter, height - binHeight + 15);
+            }
+        }
+
+        // Set up event listeners for buttons
+        document.getElementById('start').addEventListener('click', function() {
+            if (!dropInterval) {
+                dropInterval = setInterval(dropBall, 100); // Drop a ball every 100ms (moderate speed)
+            }
+        });
+
+        document.getElementById('stop').addEventListener('click', function() {
+            clearInterval(dropInterval);
+            dropInterval = null;
+        });
+
+        document.getElementById('reset').addEventListener('click', function() {
+            // Clear interval
+            clearInterval(dropInterval);
+            dropInterval = null;
+            
+            // Remove all balls
+            const bodies = Composite.allBodies(world);
+            for (let i = 0; i < bodies.length; i++) {
+                if (!bodies[i].isStatic) {
+                    Composite.remove(world, bodies[i]);
+                }
+            }
+            
+            // Reset counters
+            totalBalls = 0;
+            binCounts.fill(0);
+            updateBinDisplay();
+        });
+
+        // Run the renderer and physics engine
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+    </script>
+</body>
+</html>
