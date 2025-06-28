@@ -1,0 +1,30 @@
+# Screen dimensions
+TILE_SIZE = 24
+BOARD_WIDTH = 28
+BOARD_HEIGHT = 31
+SCREEN_WIDTH = BOARD_WIDTH * TILE_SIZE  # 672
+SCREEN_HEIGHT = BOARD_HEIGHT * TILE_SIZE  # 744
+
+# Colors
+BLACK = (0, 0, 0)
+YELLOW = (255, 255, 0)
+BLUE = (0, 0, 255)
+WHITE = (255, 255, 255)
+RED = (255, 0, 0)
+PINK = (255, 184, 255)
+CYAN = (0, 255, 255)
+ORANGE = (255, 184, 82)
+
+# Game settings
+FPS = 60
+PACMAN_SPEED = 2  # pixels per frame
+GHOST_SPEED = 1.5
+FRIGHTENED_SPEED = 1
+POWER_PELLET_DURATION = 6  # seconds
+STARTING_LIVES = 3
+
+# Directions
+UP = (0, -1)
+DOWN = (0, 1)
+LEFT = (-1, 0)
+RIGHT = (1, 0)

@@ -1,0 +1,12 @@
+[project]
+name = "pacman"
+version = "0.1.0"
+description = "Pacman game implementation in Python"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pygame>=2.5.0",
+    "numpy>=1.24.0",
+    "Pillow>=10.0.0",
+    "pytest>=7.4.0",
+]
