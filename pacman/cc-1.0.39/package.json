@@ -1,0 +1,16 @@
+{
+  "name": "pacman-game",
+  "version": "1.0.0",
+  "description": "Browser-based Pac-Man game with automated testing",
+  "main": "game.js",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "test": "node test/automatedTest.js",
+    "validate": "node validation/independentValidator.js"
+  },
+  "devDependencies": {
+    "puppeteer": "^23.0.0",
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0"
+  }
+}

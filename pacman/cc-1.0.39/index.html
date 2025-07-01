@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pac-Man</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        #gameContainer {
+            text-align: center;
+        }
+        #gameCanvas {
+            border: 2px solid #00f;
+            background-color: #000;
+        }
+        #gameInfo {
+            color: #fff;
+            margin-top: 10px;
+            font-size: 18px;
+        }
+        #score {
+            color: #ff0;
+        }
+        #lives {
+            color: #f00;
+            margin-left: 20px;
+        }
+        #level {
+            color: #0f0;
+            margin-left: 20px;
+        }
+        #gameOver {
+            color: #f00;
+            font-size: 24px;
+            margin-top: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="gameInfo">
+            <span id="score">Score: 0</span>
+            <span id="lives">Lives: 3</span>
+            <span id="level">Level: 1</span>
+        </div>
+        <div id="gameOver">GAME OVER - Press Space to Restart</div>
+    </div>
+    <script src="constants.js"></script>
+    <script src="maze.js"></script>
+    <script src="entities.js"></script>
+    <script src="ghosts.js"></script>
+    <script src="input.js"></script>
+    <script src="sounds.js"></script>
+    <script src="renderer.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>

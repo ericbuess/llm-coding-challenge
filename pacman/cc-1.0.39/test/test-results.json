@@ -1,0 +1,50 @@
+[
+  {
+    "test": "Game Start",
+    "passed": true,
+    "details": "Score: 0, Lives: 3, Level: 1",
+    "timestamp": "2025-07-01T22:35:06.035Z"
+  },
+  {
+    "test": "Movement Controls",
+    "passed": true,
+    "details": "Score after movement: 10",
+    "timestamp": "2025-07-01T22:35:09.668Z"
+  },
+  {
+    "test": "Pellet Collection",
+    "passed": false,
+    "details": "Score increased from 10 to 10",
+    "timestamp": "2025-07-01T22:35:12.824Z"
+  },
+  {
+    "test": "Portal Functionality",
+    "passed": false,
+    "details": "Pacman teleported to x: 0.5",
+    "timestamp": "2025-07-01T22:35:13.426Z"
+  },
+  {
+    "test": "Ghost Collision",
+    "passed": true,
+    "details": "Lives decreased from 3 to 2",
+    "timestamp": "2025-07-01T22:35:13.982Z"
+  },
+  {
+    "test": "Power Pellet Effect",
+    "passed": false,
+    "details": "Ghost mode: scatter",
+    "timestamp": "2025-07-01T22:35:14.238Z"
+  },
+  {
+    "test": "Level Progression",
+    "passed": true,
+    "details": "Advanced to level: 2",
+    "timestamp": "2025-07-01T22:35:15.939Z"
+  },
+  {
+    "test": "Performance (60 FPS)",
+    "passed": true,
+    "details": "Average FPS: 121.00, Min: 120, Max: 122",
+    "timestamp": "2025-07-01T22:35:20.969Z"
+  }
+]
